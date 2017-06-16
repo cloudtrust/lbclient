@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+service Greeter {
+    rpc SayHi (Empty) returns (HiMessage) {}
+}
+
+// The request message containing the user's name.
+message HiMessage {
+    string value = 1;
+}
+
+message Empty {}
