@@ -147,7 +147,7 @@ func (aggr ErrorAggregation) Add(name string, err error) ErrorAggregation {
 // `qpsQueued` is the number of queries per second before the load balancer starts queuing the queries.
 // The load balancer implements the breaker pattern (Not flexible yet. TODO)
 func NewLoadBalancedClient(niClients []NamedClient, timeout time.Duration, max int, qpsLimit int, qpsQueued int) (client.Client) {
-	var endpoints sd.FixedSubscriber
+	var endpoints sd.FixedEndpointer
 	for _, niClient := range niClients {
 		var influxEndpoint endpoint.Endpoint
 		{
