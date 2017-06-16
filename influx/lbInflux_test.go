@@ -12,21 +12,46 @@ import (
 	"sync"
 )
 
+var queryResponse = &client.Response{}
+
+type MockClient struct {
+	pingSuccess bool
+	writeSuccess bool
+	querySuccess bool
+	closeSuccess bool
+}
+func (m *MockClient)Ping(timeout time.Duration) (time.Duration, string, error) {
+	if m.pingSuccess {
+		return 10, "success", nil
+	}
+	return 0, "", errors.New("Catastrophic failure")
+}
+
+func (m *MockClient)Write(bp client.BatchPoints) error {
+	if m.writeSuccess {
+		return nil
+	}
+	return errors.New("Catastrophic failure")
+}
+
+func (m *MockClient)Query(q client.Query) (*client.Response, error) {
+	if m.querySuccess {
+		return queryResponse, nil
+	}
+	return nil, errors.New("Catastrophic failure")
+}
+func (m *MockClient)Close() error {
+	if m.closeSuccess {
+		return nil
+	}
+	return errors.New("Catastrophic failure")
+}
+
 func TestPing(b *testing.T) {
 	var clients []NamedClient
 	for i := 0; i<3; i++ {
 		var name string = "client "+strconv.Itoa(i)
-		var addr string = "http://localhost:8086"
-		var influxClient client.Client
-		{
-			var err error
-			influxClient, err = client.NewHTTPClient(client.HTTPConfig{
-				Addr:     addr,
-				Username: "",
-				Password: ""},
-			)
-			require.Nil(b, err, "Couldn't create client" + name)
-		}
+		var influxClient client.Client = &MockClient{true, true, true, true}
 		var namedClient NamedClient = NewNamedClient(name, influxClient)
 		clients = append(clients, namedClient)
 	}
@@ -34,8 +59,12 @@ func TestPing(b *testing.T) {
 	defer lbi.Close()
 	{
 		var err error
-		_, _, err = lbi.Ping(0)
-		assert.Nil(b, err, "Error while pinging!")
+		var s string
+		var t time.Duration
+		t, s, err = lbi.Ping(0)
+		require.Nil(b, err, "Error while pinging!")
+		assert.Equal(b, t, time.Duration(10))
+		assert.Equal(b, s, "success")
 	}
 }
 
@@ -43,17 +72,7 @@ func TestLimiter(b *testing.T) {
 	var clients []NamedClient
 	for i := 0; i<3; i++ {
 		var name string = "client "+strconv.Itoa(i)
-		var addr string = "http://localhost:8086"
-		var influxClient client.Client
-		{
-			var err error
-			influxClient, err = client.NewHTTPClient(client.HTTPConfig{
-				Addr:     addr,
-				Username: "",
-				Password: ""},
-			)
-			require.Nil(b, err, "Couldn't create client" + name)
-		}
+		var influxClient client.Client = &MockClient{true, true, true, true}
 		var namedClient NamedClient = NewNamedClient(name, influxClient)
 		clients = append(clients, namedClient)
 	}
@@ -82,17 +101,7 @@ func TestQueryWrite(b *testing.T) {
 	var clients []NamedClient
 	for i := 0; i<3; i++ {
 		var name string = "client "+strconv.Itoa(i)
-		var addr string = "http://localhost:8086"
-		var influxClient client.Client
-		{
-			var err error
-			influxClient, err = client.NewHTTPClient(client.HTTPConfig{
-				Addr:     addr,
-				Username: "",
-				Password: ""},
-			)
-			require.Nil(b, err, "Couldn't create client" + name)
-		}
+		var influxClient client.Client = &MockClient{true, true, true, true}
 		var namedClient NamedClient = NewNamedClient(name, influxClient)
 		clients = append(clients, namedClient)
 	}
@@ -102,8 +111,10 @@ func TestQueryWrite(b *testing.T) {
 	//Create DB
 	{
 		var err error
-		_, err = lbi.Query(client.NewQuery(fmt.Sprintf("CREATE DATABASE %s", database), "", ""))
+		var qResp *client.Response
+		qResp, err = lbi.Query(client.NewQuery(fmt.Sprintf("CREATE DATABASE %s", database), "", ""))
 		require.Nil(b, err, "query failure ", err)
+		assert.Equal(b, qResp, queryResponse, "Not expected return!!")
 	}
 
 	//Setup write to DB
@@ -131,29 +142,13 @@ func TestQueryWrite(b *testing.T) {
 		err = lbi.Write(batchPoints)
 		assert.Nil(b, err, "Write failed")
 	}
-	//Remove DB
-	{
-		var err error
-		_, err = lbi.Query(client.NewQuery(fmt.Sprintf("DROP DATABASE %s", database), "", ""))
-		require.Nil(b, err, "query failure ", err)
-	}
 }
 
 func TestBadPing(b *testing.T) {
 	var clients []NamedClient
 	for i := 0; i<3; i++ {
 		var name string = "client "+strconv.Itoa(i)
-		var addr string = "http://localhost:22"
-		var influxClient client.Client
-		{
-			var err error
-			influxClient, err = client.NewHTTPClient(client.HTTPConfig{
-				Addr:     addr,
-				Username: "",
-				Password: ""},
-			)
-			require.Nil(b, err, "Couldn't create client" + name)
-		}
+		var influxClient client.Client = &MockClient{false, true, true, true}
 		var namedClient NamedClient = NewNamedClient(name, influxClient)
 		clients = append(clients, namedClient)
 	}
@@ -170,17 +165,7 @@ func TestBadQuery(b *testing.T) {
 	var clients []NamedClient
 	for i := 0; i<3; i++ {
 		var name string = "client "+strconv.Itoa(i)
-		var addr string = "http://localhost:22"
-		var influxClient client.Client
-		{
-			var err error
-			influxClient, err = client.NewHTTPClient(client.HTTPConfig{
-				Addr:     addr,
-				Username: "",
-				Password: ""},
-			)
-			require.Nil(b, err, "Couldn't create client" + name)
-		}
+		var influxClient client.Client = &MockClient{true, true, false, true}
 		var namedClient NamedClient = NewNamedClient(name, influxClient)
 		clients = append(clients, namedClient)
 	}
@@ -198,17 +183,7 @@ func TestBadWrite(b *testing.T) {
 	var clients []NamedClient
 	for i := 0; i<3; i++ {
 		var name string = "client "+strconv.Itoa(i)
-		var addr string = "http://localhost:22"
-		var influxClient client.Client
-		{
-			var err error
-			influxClient, err = client.NewHTTPClient(client.HTTPConfig{
-				Addr:     addr,
-				Username: "",
-				Password: ""},
-			)
-			require.Nil(b, err, "Couldn't create client" + name)
-		}
+		var influxClient client.Client = &MockClient{true, false, true, true}
 		var namedClient NamedClient = NewNamedClient(name, influxClient)
 		clients = append(clients, namedClient)
 	}
@@ -240,41 +215,12 @@ func TestBadWrite(b *testing.T) {
 }
 
 
-
-type badCloseClient struct {
-	name string
-	succeed bool
-}
-
-func (b badCloseClient)GetName() string {
-	return b.name
-}
-
-func (b badCloseClient)Ping(timeout time.Duration) (time.Duration, string, error){
-	return time.Second,"",nil
-}
-
-func (b badCloseClient)Write(bp client.BatchPoints) error{
-	return nil
-}
-
-func (b badCloseClient)Query(q client.Query) (*client.Response, error){
-	return nil,nil
-}
-
-func (b badCloseClient)Close() error{
-	if b.succeed {
-		return nil
-	}
-	return errors.New("Completely Failed!")
-}
-
 func TestBadClose(b *testing.T) {
 	var clients []NamedClient
-	var badClient NamedClient = badCloseClient{"client0", false}
-	clients = append(clients, badClient)
+	var badClient client.Client = &MockClient{true, true, true, false}
+	clients = append(clients, NewNamedClient("client0", badClient))
 	var lbi client.Client = NewLoadBalancedClient(clients, 10*time.Second, 1, 3, 1)
 	var err = lbi.Close()
-	assert.NotNil(b, err, "close should fail", err)
-	assert.Equal(b, err.Error(), "close failed on client client0: Completely Failed!\n")
+	require.NotNil(b, err, "close should fail", err)
+	assert.Equal(b, err.Error(), "close failed on client client0: Catastrophic failure\n")
 }
