@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 	"time"
-	"strconv"
 	"github.com/influxdata/influxdb/client/v2"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -48,14 +47,12 @@ func (m *MockClient)Close() error {
 }
 
 func TestPing(b *testing.T) {
-	var clients []NamedClient
+	var clients []client.Client
 	for i := 0; i<3; i++ {
-		var name string = "client "+strconv.Itoa(i)
-		var influxClient client.Client = &MockClient{true, true, true, true}
-		var namedClient NamedClient = NewNamedClient(name, influxClient)
-		clients = append(clients, namedClient)
+		var influxClient client.Client = &MockClient{true, true, false, true}
+		clients = append(clients, influxClient)
 	}
-	var lbi client.Client = NewLoadBalancedClient(clients, 10 * time.Second, 1, 3, 1)
+	var lbi client.Client = NewLoadBalancedClient(clients,1, 10 * time.Second, )
 	defer lbi.Close()
 	{
 		var err error
@@ -69,20 +66,20 @@ func TestPing(b *testing.T) {
 }
 
 func TestLimiter(b *testing.T) {
-	var clients []NamedClient
+	var clients []client.Client
 	for i := 0; i<3; i++ {
-		var name string = "client "+strconv.Itoa(i)
-		var influxClient client.Client = &MockClient{true, true, true, true}
-		var namedClient NamedClient = NewNamedClient(name, influxClient)
-		clients = append(clients, namedClient)
+		var influxClient client.Client = &MockClient{true, true, false, true}
+		clients = append(clients, influxClient)
 	}
-	var qpsLimit int = 3
-	var lbi client.Client = NewLoadBalancedClient(clients, 10 * time.Second, 1, qpsLimit, 1)
+	var qpsLimit int64 = 3
+	var limiter = NewTokenBucketLimiter(qpsLimit, qpsLimit)
+	var lbi client.Client = NewLoadBalancedClient(clients,1, 10 * time.Second, limiter)
+
 	defer lbi.Close()
 	var wg sync.WaitGroup
 	wg.Add(5)
-	var numtest int = 5
-	var errnum int = 0
+	var numtest int64 = 5
+	var errnum int64 = 0
 	for i:=0; i<5; i++ {
 		go func() {
 			defer wg.Done()
@@ -98,15 +95,13 @@ func TestLimiter(b *testing.T) {
 }
 
 func TestQueryWrite(b *testing.T) {
-	var clients []NamedClient
+	var clients []client.Client
 	for i := 0; i<3; i++ {
-		var name string = "client "+strconv.Itoa(i)
 		var influxClient client.Client = &MockClient{true, true, true, true}
-		var namedClient NamedClient = NewNamedClient(name, influxClient)
-		clients = append(clients, namedClient)
+		clients = append(clients, influxClient)
 	}
 	var database string = "supertesting"
-	var lbi client.Client = NewLoadBalancedClient(clients, 10 * time.Second, 1, 3, 1)
+	var lbi client.Client = NewLoadBalancedClient(clients,1, 10 * time.Second, )
 	defer lbi.Close()
 	//Create DB
 	{
@@ -145,14 +140,12 @@ func TestQueryWrite(b *testing.T) {
 }
 
 func TestBadPing(b *testing.T) {
-	var clients []NamedClient
+	var clients []client.Client
 	for i := 0; i<3; i++ {
-		var name string = "client "+strconv.Itoa(i)
-		var influxClient client.Client = &MockClient{false, true, true, true}
-		var namedClient NamedClient = NewNamedClient(name, influxClient)
-		clients = append(clients, namedClient)
+		var influxClient client.Client = &MockClient{false, true, false, true}
+		clients = append(clients, influxClient)
 	}
-	var lbi client.Client = NewLoadBalancedClient(clients, 10 * time.Second, 1, 3, 1)
+	var lbi client.Client = NewLoadBalancedClient(clients,1, 10 * time.Second, )
 	defer lbi.Close()
 	{
 		var err error
@@ -162,15 +155,13 @@ func TestBadPing(b *testing.T) {
 }
 
 func TestBadQuery(b *testing.T) {
-	var clients []NamedClient
+	var clients []client.Client
 	for i := 0; i<3; i++ {
-		var name string = "client "+strconv.Itoa(i)
 		var influxClient client.Client = &MockClient{true, true, false, true}
-		var namedClient NamedClient = NewNamedClient(name, influxClient)
-		clients = append(clients, namedClient)
+		clients = append(clients, influxClient)
 	}
 	var database string = "testing"
-	var lbi client.Client = NewLoadBalancedClient(clients, 10 * time.Second, 1, 3, 1)
+	var lbi client.Client = NewLoadBalancedClient(clients,1, 10 * time.Second, )
 	defer lbi.Close()
 	{
 		var err error
@@ -180,15 +171,13 @@ func TestBadQuery(b *testing.T) {
 }
 
 func TestBadWrite(b *testing.T) {
-	var clients []NamedClient
+	var clients []client.Client
 	for i := 0; i<3; i++ {
-		var name string = "client "+strconv.Itoa(i)
 		var influxClient client.Client = &MockClient{true, false, true, true}
-		var namedClient NamedClient = NewNamedClient(name, influxClient)
-		clients = append(clients, namedClient)
+		clients = append(clients, influxClient)
 	}
 	var database string = "supertesting"
-	var lbi client.Client = NewLoadBalancedClient(clients, 10 * time.Second, 1, 3, 1)
+	var lbi client.Client = NewLoadBalancedClient(clients, 1, 0 * time.Second, )
 	defer lbi.Close()
 	var batchPoints client.BatchPoints
 	{
@@ -216,10 +205,10 @@ func TestBadWrite(b *testing.T) {
 
 
 func TestBadClose(b *testing.T) {
-	var clients []NamedClient
+	var clients []client.Client
 	var badClient client.Client = &MockClient{true, true, true, false}
-	clients = append(clients, NewNamedClient("client0", badClient))
-	var lbi client.Client = NewLoadBalancedClient(clients, 10*time.Second, 1, 3, 1)
+	clients = append(clients, badClient)
+	var lbi client.Client = NewLoadBalancedClient(clients, 1, 10*time.Second,)
 	var err = lbi.Close()
 	require.NotNil(b, err, "close should fail", err)
 	assert.Equal(b, err.Error(), "close failed on client client0: Catastrophic failure\n")
