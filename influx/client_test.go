@@ -71,8 +71,9 @@ func TestLimiter(b *testing.T) {
 		var influxClient client.Client = &MockClient{true, true, false, true}
 		clients = append(clients, influxClient)
 	}
-	var qpsLimit int64 = 3
-	var limiter = NewTokenBucketLimiter(qpsLimit, qpsLimit)
+	var qpsLimit float64 = 3
+	var capacity int64 = 3
+	var limiter = NewTokenBucketLimiter(qpsLimit, capacity)
 	var lbi client.Client = NewLoadBalancedClient(clients,1, 10 * time.Second, limiter)
 
 	defer lbi.Close()
@@ -91,7 +92,7 @@ func TestLimiter(b *testing.T) {
 		}()
 	}
 	wg.Wait()
-	assert.Equal(b, errnum, numtest - qpsLimit, "Wrong number of errors happened!")
+	assert.Equal(b, errnum, numtest - capacity, "Wrong number of errors happened!")
 }
 
 func TestQueryWrite(b *testing.T) {
@@ -211,5 +212,4 @@ func TestBadClose(b *testing.T) {
 	var lbi client.Client = NewLoadBalancedClient(clients, 1, 10*time.Second,)
 	var err = lbi.Close()
 	require.NotNil(b, err, "close should fail", err)
-	assert.Equal(b, err.Error(), "close failed on client client0: Catastrophic failure\n")
 }

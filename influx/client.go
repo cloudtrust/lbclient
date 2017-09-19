@@ -42,12 +42,12 @@ type influxEndpoints struct {
 	influxEndpoint endpoint.Endpoint
 }
 
-func NewTokenBucketThrottler(rate int64, capacity int64) Middleware{
-	return ratelimit.NewTokenBucketThrottler(jujuratelimit.NewBucketWithRate(float64(rate), int64(capacity)), time.Sleep)
+func NewTokenBucketThrottler(rate float64, capacity int64) Middleware{
+	return ratelimit.NewTokenBucketThrottler(jujuratelimit.NewBucketWithRate(rate, capacity), time.Sleep)
 }
 
-func NewTokenBucketLimiter(rate int64, capacity int64) Middleware{
-	return ratelimit.NewTokenBucketLimiter(jujuratelimit.NewBucketWithRate(float64(rate), int64(capacity)))
+func NewTokenBucketLimiter(rate float64, capacity int64) Middleware{
+	return ratelimit.NewTokenBucketLimiter(jujuratelimit.NewBucketWithRate(rate, capacity))
 }
 
 func NewCircuitBreaker() Middleware {
